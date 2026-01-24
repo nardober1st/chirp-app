@@ -14,19 +14,19 @@ fun main(args: Array<String>) {
 	runApplication<ChirpApplication>(*args)
 }
 
-@Component
-class Demo(
-    private val repository: UserRepository
-) {
-
-    @PostConstruct
-    fun init() {
-        repository.save(
-            UserEntity(
-                email = "bernardo@gmail.com",
-                username = "pika",
-                hashedPassword = "12312312321"
-            )
-        )
-    }
-}
+//@Component
+//class Demo(
+//    private val repository: UserRepository
+//) {
+//
+//    @PostConstruct
+//    fun init() {
+//        repository.save(
+//            UserEntity(
+//                email = "bernardo@gmail.com",
+//                username = "pika",
+//                hashedPassword = "12312312321"
+//            )
+//        )
+//    }
+//}
