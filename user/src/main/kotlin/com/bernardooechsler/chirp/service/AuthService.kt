@@ -1,4 +1,4 @@
-package com.bernardooechsler.chirp.service.auth
+package com.bernardooechsler.chirp.service
 
 import com.bernardooechsler.chirp.domain.exception.EmailNotVerifiedException
 import com.bernardooechsler.chirp.domain.exception.InvalidCredentialsException
