@@ -1,5 +1,6 @@
 package com.bernardooechsler.chirp.api.controllers
 
+import com.bernardooechsler.chirp.api.config.IpRateLimit
 import com.bernardooechsler.chirp.api.dto.AuthenticatedUserDto
 import com.bernardooechsler.chirp.api.dto.ChangePasswordRequest
 import com.bernardooechsler.chirp.api.dto.EmailRequest
@@ -10,6 +11,8 @@ import com.bernardooechsler.chirp.api.dto.ResetPasswordRequest
 import com.bernardooechsler.chirp.api.dto.UserDto
 import com.bernardooechsler.chirp.api.mappers.toAuthenticatedUserDto
 import com.bernardooechsler.chirp.api.mappers.toUserDto
+import com.bernardooechsler.chirp.api.util.requestUserId
+import com.bernardooechsler.chirp.infra.rate_limiting.EmailRateLimiter
 import com.bernardooechsler.chirp.service.AuthService
 import com.bernardooechsler.chirp.service.EmailVerificationService
 import com.bernardooechsler.chirp.service.PasswordResetService
@@ -20,16 +23,23 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import java.util.concurrent.TimeUnit
 
 @RestController
 @RequestMapping("/api/auth")
 class AuthController(
     private val authService: AuthService,
     private val emailVerificationService: EmailVerificationService,
-    private val passwordResetService: PasswordResetService
+    private val passwordResetService: PasswordResetService,
+    private val emailRateLimiter: EmailRateLimiter
 ) {
 
     @PostMapping("/register")
+    @IpRateLimit(
+        requests = 10,
+        duration = 1L,
+        unit = TimeUnit.HOURS
+    )
     fun register(
         @Valid @RequestBody body: RegisterRequest
     ): UserDto {
@@ -41,6 +51,11 @@ class AuthController(
     }
 
     @PostMapping("/login")
+    @IpRateLimit(
+        requests = 10,
+        duration = 1L,
+        unit = TimeUnit.HOURS
+    )
     fun login(
         @RequestBody body: LoginRequest
     ): AuthenticatedUserDto {
@@ -66,6 +81,22 @@ class AuthController(
         authService.logout(body.refreshToken)
     }
 
+    @PostMapping("/resend-verification")
+    @IpRateLimit(
+        requests = 10,
+        duration = 1L,
+        unit = TimeUnit.HOURS
+    )
+    fun resendVerification(
+        @Valid @RequestBody body: EmailRequest
+    ) {
+        emailRateLimiter.withRateLimit(
+            email = body.email
+        ) {
+            emailVerificationService.resendVerificationEmail(body.email)
+        }
+    }
+
     @GetMapping("/verify")
     fun verifyEmail(
         @RequestParam token: String
@@ -74,6 +105,11 @@ class AuthController(
     }
 
     @PostMapping("/forgot-password")
+    @IpRateLimit(
+        requests = 10,
+        duration = 1L,
+        unit = TimeUnit.HOURS
+    )
     fun forgotPassword(
         @Valid @RequestBody body: EmailRequest
     ) {
@@ -94,6 +130,10 @@ class AuthController(
     fun changePassword(
         @Valid @RequestBody body: ChangePasswordRequest
     ) {
-        // TODO: Extract request user ID and call service
+        passwordResetService.changePassword(
+            userId = requestUserId,
+            oldPassword = body.oldPassword,
+            newPassword = body.newPassword
+        )
     }
 }
