@@ -1,6 +1,6 @@
 package com.bernardooechsler.chirp.api.dto
 
-import com.bernardooechsler.chirp.domain.model.UserId
+import com.bernardooechsler.chirp.domain.type.UserId
 
 data class UserDto (
     val id: UserId,

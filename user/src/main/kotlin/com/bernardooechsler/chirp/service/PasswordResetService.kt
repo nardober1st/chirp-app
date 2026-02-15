@@ -4,7 +4,7 @@ import com.bernardooechsler.chirp.domain.exception.InvalidCredentialsException
 import com.bernardooechsler.chirp.domain.exception.InvalidTokenException
 import com.bernardooechsler.chirp.domain.exception.SamePasswordException
 import com.bernardooechsler.chirp.domain.exception.UserNotFoundException
-import com.bernardooechsler.chirp.domain.model.UserId
+import com.bernardooechsler.chirp.domain.type.UserId
 import com.bernardooechsler.chirp.infra.database.entities.PasswordResetTokenEntity
 import com.bernardooechsler.chirp.infra.database.repositories.PasswordResetTokenRepository
 import com.bernardooechsler.chirp.infra.database.repositories.RefreshTokenRepository
