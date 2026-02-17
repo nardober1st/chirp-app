@@ -1,5 +1,6 @@
 package com.bernardooechsler.chirp.service
 
+import com.bernardooechsler.chirp.domain.events.user.UserEvent
 import com.bernardooechsler.chirp.domain.exception.InvalidCredentialsException
 import com.bernardooechsler.chirp.domain.exception.InvalidTokenException
 import com.bernardooechsler.chirp.domain.exception.SamePasswordException
@@ -9,6 +10,7 @@ import com.bernardooechsler.chirp.infra.database.entities.PasswordResetTokenEnti
 import com.bernardooechsler.chirp.infra.database.repositories.PasswordResetTokenRepository
 import com.bernardooechsler.chirp.infra.database.repositories.RefreshTokenRepository
 import com.bernardooechsler.chirp.infra.database.repositories.UserRepository
+import com.bernardooechsler.chirp.infra.message_queue.EventPublisher
 import com.bernardooechsler.chirp.infra.security.PasswordEncoder
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.data.repository.findByIdOrNull
@@ -28,27 +30,33 @@ class PasswordResetService(
     // Configurable expiry time for reset tokens (typically short, e.g., 15-60 minutes)
     @param:Value("\${chirp.email.reset-password.expiry-minutes}")
     private val expiryMinutes: Long,
-    private val refreshTokenRepository: RefreshTokenRepository
+    private val refreshTokenRepository: RefreshTokenRepository,
+    private val eventPublisher: EventPublisher
 ) {
 
     // Initiates the "forgot password" flow - generates a reset token and (eventually) sends an email.
     // Silently returns if email doesn't exist to prevent user enumeration attacks.
     @Transactional
     fun requestPasswordReset(email: String) {
-        // Security: Don't reveal whether email exists - just return silently if not found
         val user = userRepository.findByEmail(email) ?: return
 
-        // Invalidate any existing reset tokens so only the newest link works
         passwordResetTokenRepository.invalidateActiveTokensForUser(user)
 
-        // Create new token - the entity generates a secure random token automatically
         val token = PasswordResetTokenEntity(
             user = user,
             expiresAt = Instant.now().plus(expiryMinutes, ChronoUnit.MINUTES),
         )
         passwordResetTokenRepository.save(token)
 
-        // TODO: Inform notification service about password reset trigger to send email
+        eventPublisher.publish(
+            event = UserEvent.RequestResetPassword(
+                userId = user.id!!,
+                email = user.email,
+                username = user.username,
+                passwordResetToken = token.token,
+                expiresInMinutes = expiryMinutes
+            )
+        )
     }
 
     // Completes the password reset flow - validates the token and updates the password.

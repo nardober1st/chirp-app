@@ -40,6 +40,16 @@ spring:
         format_sql: true
         show_sql: true
 
+  mail:
+    port: 587
+    password: ${MAILGUN_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
   rabbitmq:
     host: seal.lmq.cloudamqp.com
     password: ${RABBITMQ_PASSWORD}
@@ -66,6 +76,7 @@ jwt:
 
 chirp:
   email:
+    from: nardober1st@sandbox896750f5e1394105a64bcdf226f8a16f.mailgun.org
     verification:
       expiry-hours: 24
     reset-password:
