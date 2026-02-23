@@ -1,5 +1,7 @@
 package com.bernardooechsler.chirp.service
 
+import com.bernardooechsler.chirp.api.dto.ChatMessageDto
+import com.bernardooechsler.chirp.api.mappers.toChatMessageDto
 import com.bernardooechsler.chirp.domain.exception.ChatNotFoundException
 import com.bernardooechsler.chirp.domain.exception.ChatParticipantNotFoundException
 import com.bernardooechsler.chirp.domain.exception.ForbiddenException
@@ -14,9 +16,11 @@ import com.bernardooechsler.chirp.infra.database.repositories.ChatRepository
 import com.bernardooechsler.chirp.domain.type.UserId
 import com.bernardooechsler.chirp.infra.database.mappers.toChatMessage
 import com.bernardooechsler.chirp.infra.database.repositories.ChatMessageRepository
+import org.springframework.data.domain.PageRequest
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Instant
 
 @Service
 class ChatService(
@@ -24,6 +28,27 @@ class ChatService(
     private val chatParticipantRepository: ChatParticipantRepository,
     private val chatMessageRepository: ChatMessageRepository
 ) {
+
+    /**
+     * Fetch messages older than [before] using cursor-based pagination.
+     * Results come from DB in descending order (newest first) for efficient querying,
+     * then get reversed so the client receives them in chronological order.
+     */
+    fun getChatMessages(
+        chatId: ChatId,
+        before: Instant?,
+        pageSize: Int
+    ): List<ChatMessageDto> {
+        return chatMessageRepository
+            .findByChatIdBefore(
+                chatId = chatId,
+                before = before ?: Instant.now(),
+                pageable = PageRequest.of(0, pageSize)
+            )
+            .content
+            .asReversed()
+            .map { it.toChatMessage().toChatMessageDto() }
+    }
 
     /**
      * Creates a new chat between the creator and one or more other users.
