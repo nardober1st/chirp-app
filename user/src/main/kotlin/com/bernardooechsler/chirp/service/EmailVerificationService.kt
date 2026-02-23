@@ -89,6 +89,14 @@ class EmailVerificationService(
                 this.hasVerifiedEmail = true
             }
         ).toUser()
+
+        eventPublisher.publish(
+            event = UserEvent.Verified(
+                userId = verificationToken.user.id!!,
+                email = verificationToken.user.email,
+                username = verificationToken.user.username
+            )
+        )
     }
 
     // Runs daily at 3 AM — removes expired tokens to keep the table clean

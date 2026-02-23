@@ -11,7 +11,7 @@ interface ChatParticipantRepository: JpaRepository<ChatParticipantEntity, UserId
     // SELECT * FROM chat_participants WHERE user_id IN (?, ?, ?)
     // No @Query needed because the method name follows Spring's naming convention.
     // Used when creating a chat: pass a list of user IDs, get back the full entities.
-    fun findByUserIdIn(userIds: List<UserId>): Set<ChatParticipantEntity>
+    fun findByUserIdIn(userIds: Set<UserId>): Set<ChatParticipantEntity>
 
     // Case-insensitive search for a participant by exact username or email.
     // Powers the "find someone to chat with" feature.
