@@ -2,6 +2,9 @@ package com.bernardooechsler.chirp.service
 
 import com.bernardooechsler.chirp.api.dto.ChatMessageDto
 import com.bernardooechsler.chirp.api.mappers.toChatMessageDto
+import com.bernardooechsler.chirp.domain.event.ChatParticipantLeftEvent
+import com.bernardooechsler.chirp.domain.event.ChatParticipantsJoinedEvent
+import com.bernardooechsler.chirp.domain.event.MessageDeletedEvent
 import com.bernardooechsler.chirp.domain.exception.ChatNotFoundException
 import com.bernardooechsler.chirp.domain.exception.ChatParticipantNotFoundException
 import com.bernardooechsler.chirp.domain.exception.ForbiddenException
@@ -16,6 +19,7 @@ import com.bernardooechsler.chirp.infra.database.repositories.ChatRepository
 import com.bernardooechsler.chirp.domain.type.UserId
 import com.bernardooechsler.chirp.infra.database.mappers.toChatMessage
 import com.bernardooechsler.chirp.infra.database.repositories.ChatMessageRepository
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
@@ -26,7 +30,8 @@ import java.time.Instant
 class ChatService(
     private val chatRepository: ChatRepository,
     private val chatParticipantRepository: ChatParticipantRepository,
-    private val chatMessageRepository: ChatMessageRepository
+    private val chatMessageRepository: ChatMessageRepository,
+    private val applicationEventPublisher: ApplicationEventPublisher
 ) {
 
     /**
@@ -121,6 +126,13 @@ class ChatService(
             }
         ).toChat(lastMessage)
 
+        applicationEventPublisher.publishEvent(
+            ChatParticipantsJoinedEvent(
+                chatId = chatId,
+                userIds = userIds
+            )
+        )
+
         return updatedChat
     }
 
@@ -144,6 +156,13 @@ class ChatService(
             chat.apply {
                 this.participants = chat.participants - participant
             }
+        )
+
+        applicationEventPublisher.publishEvent(
+            ChatParticipantLeftEvent(
+                chatId = chatId,
+                userId = userId
+            )
         )
     }
 
