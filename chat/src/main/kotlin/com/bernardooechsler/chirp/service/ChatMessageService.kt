@@ -16,6 +16,7 @@ import com.bernardooechsler.chirp.infra.database.repositories.ChatMessageReposit
 import com.bernardooechsler.chirp.infra.database.repositories.ChatParticipantRepository
 import com.bernardooechsler.chirp.infra.database.repositories.ChatRepository
 import com.bernardooechsler.chirp.infra.message_queue.EventPublisher
+import org.springframework.cache.annotation.CacheEvict
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
@@ -36,6 +37,10 @@ class ChatMessageService(
      * Validates that the chat exists and the sender is a participant.
      */
     @Transactional
+    @CacheEvict(
+        value = ["messages"],
+        key = "#chatId",
+    )
     fun sendMessage(
         chatId: ChatId,
         senderId: UserId,
@@ -93,5 +98,15 @@ class ChatMessageService(
                 messageId = messageId
             )
         )
+
+        evictMessagesCache(message.chatId)
+    }
+
+    @CacheEvict(
+        value = ["messages"],
+        key = "#chatId",
+    )
+    fun evictMessagesCache(chatId: ChatId) {
+        // NO-OP: Let Spring handle the cache evict
     }
 }
