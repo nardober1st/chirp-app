@@ -7,11 +7,13 @@ import com.bernardooechsler.chirp.api.dto.ws.IncomingWebSocketMessage
 import com.bernardooechsler.chirp.api.dto.ws.IncomingWebSocketMessageType
 import com.bernardooechsler.chirp.api.dto.ws.OutgoingWebSocketMessage
 import com.bernardooechsler.chirp.api.dto.ws.OutgoingWebSocketMessageType
+import com.bernardooechsler.chirp.api.dto.ws.ProfilePictureUpdateDto
 import com.bernardooechsler.chirp.api.dto.ws.SendMessageDto
 import com.bernardooechsler.chirp.api.mappers.toChatMessageDto
 import com.bernardooechsler.chirp.domain.event.ChatParticipantLeftEvent
 import com.bernardooechsler.chirp.domain.event.ChatParticipantsJoinedEvent
 import com.bernardooechsler.chirp.domain.event.MessageDeletedEvent
+import com.bernardooechsler.chirp.domain.event.ProfilePictureUpdatedEvent
 import com.bernardooechsler.chirp.domain.type.ChatId
 import com.bernardooechsler.chirp.domain.type.UserId
 import com.bernardooechsler.chirp.service.ChatMessageService
@@ -474,6 +476,57 @@ class ChatWebSocketHandler(
                 )
             )
         )
+    }
+
+    // Listens for ProfilePictureUpdatedEvent, but only runs AFTER the DB transaction commits
+// This prevents broadcasting a change that might get rolled back
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    fun onProfilePictureUpdated(event: ProfilePictureUpdatedEvent) {
+        // Step 1: Find all chats this user is part of
+        // (so we know which other users need to see the update)
+        val userChats = connectionLock.read {
+            userChatIds[event.userId]?.toList() ?: emptyList()
+        }
+
+        // Step 2: Build the DTO payload
+        val dto = ProfilePictureUpdateDto(
+            userId = event.userId,
+            newUrl = event.newUrl,  // null if picture was deleted
+        )
+
+        // Step 3: Collect all WebSocket session IDs across all the user's chats
+        // These are the sessions that need to receive the update
+        val sessionIds = mutableSetOf<String>()  // Set prevents duplicates
+        userChats.forEach { chatId ->
+            connectionLock.read {
+                chatToSessions[chatId]?.let { sessions ->
+                    sessionIds.addAll(sessions)
+                }
+            }
+        }
+
+        // Step 4: Wrap in the standard outgoing message format
+        val webSocketMessage = OutgoingWebSocketMessage(
+            type = OutgoingWebSocketMessageType.PROFILE_PICTURE_UPDATED,
+            payload = objectMapper.writeValueAsString(dto)
+        )
+        val messageJson = objectMapper.writeValueAsString(webSocketMessage)
+
+        // Step 5: Send to each session
+        sessionIds.forEach { sessionId ->
+            val userSession = connectionLock.read {
+                sessions[sessionId]
+            } ?: return@forEach  // Session gone, skip it
+
+            try {
+                if (userSession.session.isOpen) {
+                    userSession.session.sendMessage(TextMessage(messageJson))
+                }
+            } catch (e: Exception) {
+                // Don't let one failed session break the others
+                logger.error("Could not send profile picture update to session $sessionId", e)
+            }
+        }
     }
 
     /**
