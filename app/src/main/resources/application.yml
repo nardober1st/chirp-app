@@ -1,0 +1,97 @@
+spring:
+  application:
+    name: chirp
+
+  data:
+    redis:
+      host: "redis-15405.c77.eu-west-1-1.ec2.cloud.redislabs.com"
+      password: ${REDIS_PASSWORD}
+      username: "default"
+      port: 15405
+      connect-timeout: 5000ms
+      timeout: 2000ms
+
+  datasource:
+    url: jdbc:postgresql://aws-1-eu-west-1.pooler.supabase.com:5432/postgres
+    username: postgres.tscqfwjcfnpjncuyvvrw
+    password: ${POSTGRES_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 20000
+      idle-timeout: 300000
+      max-lifetime: 12000000
+      validation-timeout: 5000
+      pool-name: SpringBootHikariCP
+      data-source-properties:
+        prepareThreshold: 5
+        preparedStatementCacheQueries: 256
+        preparedStatementCacheSizeMiB: 5
+
+        tcpKeepAlive: true
+        socketTimeout: 30
+        connectTimeout: 10
+  jpa:
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        show_sql: true
+
+  mail:
+    port: 587
+    password: ${MAILGUN_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+  rabbitmq:
+    host: seal.lmq.cloudamqp.com
+    password: ${RABBITMQ_PASSWORD}
+    username: noidsdey
+    ssl:
+      enabled: true
+    virtual-host: noidsdey
+    listener:
+      simple:
+        acknowledge-mode: auto
+        concurrency: 1
+        max-concurrency: 3
+        prefetch: 10
+        default-requeue-rejected: true
+        retry:
+          enabled: true
+          initial-interval: 1000ms
+          max-interval: 10000ms
+          max-attempts: 3
+          multiplier: 2
+
+jwt:
+  secret: ${JWT_SECRET_BASE64}
+
+chirp:
+  email:
+    from: nardober1st@sandbox896750f5e1394105a64bcdf226f8a16f.mailgun.org
+    verification:
+      expiry-hours: 24
+    reset-password:
+      expiry-minutes: 30
+
+nginx:
+  trusted-ips:
+    - "127.0.0.1" # nginx on same machine
+    - "::1" # IPv6 localhost
+    - "172.17.0.0/16" # nginx container IP when using Docker
+    - "10.0.0.5/32" # nginx server IP (if separate machine)
+
+supabase:
+  url: "https://tscqfwjcfnpjncuyvvrw.supabase.co"
+  service-key: ${SUPABASE_SERVICE_KEY}
+
+firebase:
+  credentials-path: "classpath:firebase-credentials/chirp-firebase-adminsdk.json"
