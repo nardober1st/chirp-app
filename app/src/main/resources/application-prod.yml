@@ -1,0 +1,23 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  mail:
+    host: smtp.mailgun.org
+    username: nardober1st@sandbox896750f5e1394105a64bcdf226f8a16f.mailgun.org
+
+jwt:
+  expiration-minutes: 15
+
+nginx:
+  require-proxy: true
+
+chirp:
+  email:
+    url: "http://178.104.91.78"
+  rate-limit:
+    ip:
+      apply-limit: true
+  web-socket:
+    allowed-origin:
+      "http://178.104.91.78"
