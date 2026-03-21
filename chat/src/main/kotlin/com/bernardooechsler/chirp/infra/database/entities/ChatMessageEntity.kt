@@ -37,9 +37,7 @@ import java.time.Instant
 )
 class ChatMessageEntity(
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     var id: ChatMessageId? = null,
-
     // The actual text content of the message
     @Column(nullable = false)
     var content: String,

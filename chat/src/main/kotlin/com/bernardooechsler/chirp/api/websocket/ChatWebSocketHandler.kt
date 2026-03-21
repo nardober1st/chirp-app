@@ -10,6 +10,7 @@ import com.bernardooechsler.chirp.api.dto.ws.OutgoingWebSocketMessageType
 import com.bernardooechsler.chirp.api.dto.ws.ProfilePictureUpdateDto
 import com.bernardooechsler.chirp.api.dto.ws.SendMessageDto
 import com.bernardooechsler.chirp.api.mappers.toChatMessageDto
+import com.bernardooechsler.chirp.domain.event.ChatCreatedEvent
 import com.bernardooechsler.chirp.domain.event.ChatParticipantLeftEvent
 import com.bernardooechsler.chirp.domain.event.ChatParticipantsJoinedEvent
 import com.bernardooechsler.chirp.domain.event.MessageDeletedEvent
@@ -52,7 +53,7 @@ class ChatWebSocketHandler(
     private val objectMapper: ObjectMapper,
     private val chatService: ChatService,
     private val jwtService: JwtService
-): TextWebSocketHandler() {
+) : TextWebSocketHandler() {
 
     companion object {
         private const val PING_INTERVAL_MS = 30_000L
@@ -73,10 +74,13 @@ class ChatWebSocketHandler(
 
     // sessionId → UserSession: "Who owns this WebSocket session?"
     private val sessions = ConcurrentHashMap<String, UserSession>()
+
     // userId → Set<sessionId>: "What sessions does this user have open?" (supports multiple tabs/devices)
     private val userToSessions = ConcurrentHashMap<UserId, MutableSet<String>>()
+
     // userId → Set<chatId>: "What chats is this user part of?" (cached on first connect to avoid repeated DB queries)
     private val userChatIds = ConcurrentHashMap<UserId, MutableSet<ChatId>>()
+
     // chatId → Set<sessionId>: "Which sessions should receive messages for this chat?" (the broadcast map)
     private val chatToSessions = ConcurrentHashMap<ChatId, MutableSet<String>>()
 
@@ -222,7 +226,7 @@ class ChatWebSocketHandler(
                 IncomingWebSocketMessage::class.java
             )
             // Route to the correct handler based on message type
-            when(webSocketMessage.type) {
+            when (webSocketMessage.type) {
                 IncomingWebSocketMessageType.NEW_MESSAGE -> {
                     // Second parse: deserialize the payload string into the specific DTO
                     val dto = objectMapper.readValue(
@@ -235,7 +239,7 @@ class ChatWebSocketHandler(
                     )
                 }
             }
-        } catch(e: JacksonException) {
+        } catch (e: JacksonException) {
             // If the JSON is malformed or UUIDs are invalid, don't crash —
             // just tell the sender what went wrong
             logger.warn("Could not parse message ${message.payload}", e)
@@ -276,6 +280,32 @@ class ChatWebSocketHandler(
         )
     }
 
+    private fun updateChatForUsers(
+        chatId: ChatId,
+        userIds: List<UserId>
+    ) {
+        connectionLock.write {
+            userIds.forEach { userId ->
+                userChatIds.compute(userId) { _, chatIds ->
+                    (chatIds ?: mutableSetOf()).apply {
+                        add(chatId)
+                    }
+                }
+
+                userToSessions[userId]?.forEach { sessionId ->
+                    chatToSessions.compute(chatId) { _, sessions ->
+                        (sessions ?: mutableSetOf()).apply { add(sessionId) }
+                    }
+                }
+            }
+        }
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    fun onChatCreated(event: ChatCreatedEvent) {
+        updateChatForUsers(event.chatId, userIds = event.participantIds)
+    }
+
     /**
      * Listens for new participants joining a chat.
      *
@@ -290,26 +320,7 @@ class ChatWebSocketHandler(
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     fun onJoinChat(event: ChatParticipantsJoinedEvent) {
-        connectionLock.write {
-            event.userIds.forEach { userId ->
-                // Add this chat to the user's cached chat set
-                // so future authorization checks in handleSendMessage pass
-                userChatIds.compute(userId) { _, chatIds ->
-                    (chatIds ?: mutableSetOf()).apply {
-                        add(event.chatId)
-                    }
-                }
-
-                // If this user is currently online (has active sessions),
-                // register those sessions under the chat's broadcast list
-                // so they start receiving messages immediately
-                userToSessions[userId]?.forEach { sessionId ->
-                    chatToSessions.compute(event.chatId) { _, sessions ->
-                        (sessions ?: mutableSetOf()).apply { add(sessionId) }
-                    }
-                }
-            }
-        }
+        updateChatForUsers(event.chatId, userIds = event.userIds.toList())
 
         // Notify everyone in the chat (including the new participants,
         // who were just added to the routing maps above) that the
@@ -382,13 +393,13 @@ class ChatWebSocketHandler(
 
         sessionsSnapshot.forEach { (sessionId, userSession) ->
             try {
-                if(userSession.session.isOpen) {
+                if (userSession.session.isOpen) {
                     val lastPong = userSession.lastPongTimestamp
 
                     // Check if the session has gone silent for too long.
                     // If the gap between now and the last pong exceeds the timeout,
                     // the connection is considered dead.
-                    if(currentTime - lastPong > PONG_TIMEOUT_MS) {
+                    if (currentTime - lastPong > PONG_TIMEOUT_MS) {
                         logger.warn("Session $sessionId has timed out, closing connection.")
                         sessionsToClose.add(sessionId)
                         return@forEach // Skip sending a ping to a dead session
@@ -400,7 +411,7 @@ class ChatWebSocketHandler(
                     userSession.session.sendMessage(PingMessage())
                     logger.debug("Sent ping to {}", userSession.userId)
                 }
-            } catch(e: Exception) {
+            } catch (e: Exception) {
                 // If we can't even send a ping, the connection is broken.
                 // Mark it for closure instead of crashing the entire loop.
                 logger.error("Could not ping session $sessionId", e)
@@ -420,7 +431,7 @@ class ChatWebSocketHandler(
                         // This triggers afterConnectionClosed() which cleans up
                         // all four routing maps.
                         session.close(CloseStatus.GOING_AWAY.withReason("Ping timeout"))
-                    } catch(e: Exception) {
+                    } catch (e: Exception) {
                         logger.error("Couldn't close sessions for session ${session.id}")
                     }
                 }
@@ -549,7 +560,7 @@ class ChatWebSocketHandler(
 
         try {
             session.sendMessage(TextMessage(webSocketMessage))
-        } catch(e: Exception) {
+        } catch (e: Exception) {
             logger.warn("Couldn't send error message", e)
         }
     }
@@ -601,7 +612,7 @@ class ChatWebSocketHandler(
         // Authorization: check the in-memory cache to see if this user is in the chat
         val userChatIds = connectionLock.read { this@ChatWebSocketHandler.userChatIds[senderId] } ?: return
 
-        if(dto.chatId !in userChatIds) {
+        if (dto.chatId !in userChatIds) {
             return
         }
 
@@ -640,12 +651,12 @@ class ChatWebSocketHandler(
             val userSession = connectionLock.read {
                 sessions[sessionId] ?: return@forEach
             }
-            if(userSession.session.isOpen) {
+            if (userSession.session.isOpen) {
                 try {
                     val messageJson = objectMapper.writeValueAsString(message)
                     userSession.session.sendMessage(TextMessage(messageJson))
                     logger.debug("Sent message to user {}: {}", userId, messageJson)
-                } catch(e: Exception) {
+                } catch (e: Exception) {
                     logger.error("Error while sending message to $userId", e)
                 }
             }

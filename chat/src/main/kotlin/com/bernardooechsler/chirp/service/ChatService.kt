@@ -2,6 +2,7 @@ package com.bernardooechsler.chirp.service
 
 import com.bernardooechsler.chirp.api.dto.ChatMessageDto
 import com.bernardooechsler.chirp.api.mappers.toChatMessageDto
+import com.bernardooechsler.chirp.domain.event.ChatCreatedEvent
 import com.bernardooechsler.chirp.domain.event.ChatParticipantLeftEvent
 import com.bernardooechsler.chirp.domain.event.ChatParticipantsJoinedEvent
 import com.bernardooechsler.chirp.domain.exception.ChatNotFoundException
@@ -186,12 +187,19 @@ class ChatService(
         // Persist the new chat entity with the creator and all participants,
         // then map the saved JPA entity to a clean domain model (Chat).
         // lastMessage is null because a freshly created chat has no messages yet.
-        return chatRepository.save(
+        return chatRepository.saveAndFlush(
             ChatEntity(
                 creator = creator,
                 participants = setOf(creator) + otherParticipants
             )
-        ).toChat(lastMessage = null)
+        ).toChat(lastMessage = null).also { entity ->
+            applicationEventPublisher.publishEvent(
+                ChatCreatedEvent(
+                    entity.id,
+                    participantIds = entity.participants.map { it.userId }
+                )
+            )
+        }
     }
 
     /**
